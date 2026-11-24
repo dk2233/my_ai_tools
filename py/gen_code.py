@@ -47,7 +47,10 @@ LANGUAGES = {
 }
 
 def generuj_kod(prompt, verbose, lang="python", timeout=120):
-    """Generuje kod w wybranym języku z podglądem strumieniowym."""
+    """Generuje kod w wybranym języku z podglądem strumieniowym.
+    
+    Oddzielnie zbiera thinking i odpowiedź.
+    """
     
     print(f"🚀 Generowanie kodu w języku: {lang}...")
     
@@ -74,42 +77,47 @@ def generuj_kod(prompt, verbose, lang="python", timeout=120):
             }
         )
         
-        full_output = ""
-        in_thinking = False  # Flaga pomocnicza do ładnego formatowania w konsoli
+        # SEPAROWANE zmienne: thinking vs odpowiedź
+        thinking: str  = ""
+        content: str = ""
+        in_thinking: bool = False
+        has_thinking = False
 
         for chunk in response:
             message = chunk.get('message', {})
             
-            # 2. Obsługa strumienia MYŚLENIA (wyświetlamy, ale nie dodajemy do full_output)
+            # 1. Obsługa strumienia MYŚLENIA
             thinking_chunk = message.get('thinking', '')
             if thinking_chunk:
                 if not in_thinking:
                     in_thinking = True
                     print("\n🧠 Proces myślenia:\n", end='', flush=True)
-                if verbose == True:
+                if verbose:
                     print(thinking_chunk, end='', flush=True)
-                full_output+= thinking_chunk
+                thinking += thinking_chunk
+                has_thinking = True
             
-            # 3. Obsługa właściwej ODPOWIEDZI (wyświetlamy i zapisujemy do full_output)
+            # 2. Obsługa właściwej ODPOWIEDZI
             content_chunk = message.get('content', '')
             if content_chunk:
                 if in_thinking:
                     in_thinking = False
                     print("\n\n💻 Wygenerowany kod:\n", end='', flush=True)
-                full_output += content_chunk
-
+                content += content_chunk
                 if verbose:
                     print(content_chunk, end='', flush=True)
             
         print("\n✅ Pełna odpowiedź odebrana.")
-        return full_output
+        
+        # Zwracamy oba wyniki osobno
+        return thinking, content, has_thinking
     
     except ollama.ResponseError as e:
         print(f"\n⚠️  Błąd odpowiedzi modelu: {e}")
-        return None
+        return None, None, False
     except Exception as e:
         print(f"\n❌ Błąd: {e}")
-        return None
+        return None, None, False
 
 
 def wyeksponuj_kod(output_text, lang):
@@ -138,28 +146,37 @@ def wyeksponuj_kod(output_text, lang):
             return output_text, lang_cfg['ext']
 
 
-def zapisuj_pliki(output_text, code_content, code_filename, lang="python"):
-    """Zapisuje pliki wynikowe."""
-    if not code_content:
-        print("❌ Brak treści do zapisania (może wskazywać na błąd parsowania).")
-        return
+def zapisuj_pliki(thinking, response, code_content, code_filename, lang="python"):
+    """Zapisuje pliki: thinking, response i kod osobno."""
     
-    with open(code_filename+"_info", "w", encoding="utf-8") as f:
-        f.write(output_text)
-    print(f"📄 Pełna odpowiedź zapisana w: ",code_filename+"_info")
+    # Plik z procesem myślenia
+    if thinking:
+        with open(code_filename+"_thinking", "w", encoding="utf-8") as f:
+            f.write(thinking)
+        print(f"🧠 Thinking zapisany w: ", code_filename+"_thinking")
     
-    with open(code_filename, "w", encoding="utf-8") as f:
-        f.write(code_content)
-    print(f"💾 Kod zapisany w: {code_filename}")
+    # Plik z pełną odpowiedzią modelu
+    if response:
+        with open(code_filename+"_info", "w", encoding="utf-8") as f:
+            f.write(response)
+        print(f"📄 Odpowiedź zapisana w: ", code_filename+"_info")
     
+    # Plik z wyciągniętym kodem
+    if code_content:
+        with open(code_filename, "w", encoding="utf-8") as f:
+            f.write(code_content)
+        print(f"💾 Kod zapisany w: {code_filename}")
+    
+    # Plik z metadanymi procesu
     info_filename = code_filename + "_model"
     try:
-        formatted_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        formatted_time = datetime.now().strftime('%%Y-%%m-%%d %%H:%%M:%%S')
         info_content = f"""=== Proces generacji kodu ===
 Czas generacji: {formatted_time}
 Model: {MODEL_NAME}
 Język: {lang}
-Wynik: Zapisany w pliku.
+Thinking: {'Tak' if thinking else 'Nie'}
+Wynik: Zapisany w plikach.
 """
         with open(info_filename, "w", encoding="utf-8") as f:
             f.write(info_content)
@@ -192,20 +209,20 @@ if __name__ == "__main__":
         output_file += target_extension
         
     print(f"--- START PROCESU ---")
-    print(args.verbose)
     
-    full_output_text = generuj_kod(prompt, args.verbose, lang)
+    # Zwracamy thinking, response, has_thinking
+    thinking, response, has_thinking = generuj_kod(prompt, args.verbose, lang)
     
-    if full_output_text:
-        kod_wyciety, ext = wyeksponuj_kod(full_output_text, lang)
+    if thinking is not None and response is not None:
+        kod_wyciety, ext = wyeksponuj_kod(response, lang)
         
         if kod_wyciety:
-            zapisuj_pliki(full_output_text, kod_wyciety, output_file, lang=lang)
+            zapisuj_pliki(thinking, response, kod_wyciety, output_file, lang=lang)
         else:
             print("⚠️  Nie udało się wyciągnąć czystego kodu z odpowiedzi.")
             
             with open(output_file, "w", encoding="utf-8") as f:
-                f.write(full_output_text)
+                f.write(response)
             print(f"💾 Cała odpowiedź zapisana w: {output_file}")
     else:
         print("Generowanie się nie powiodło.")
