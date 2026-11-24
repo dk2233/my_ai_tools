@@ -13,6 +13,13 @@ MODEL_NAME = "qwen35-long"  # Możesz zmienić na qwen2.5, llama3.2, itp.
 CTX = 65536  # Standardowa wartość kontekstu
 SYSTEM_PROMPT_BASE = "Jesteś świetnym generatorem kodu w języku {lang}. Odpowiadaj Tylko na temat kodu."
 
+# Parametry modelu (możesz je tu modyfikować)
+MODEL_OPTIONS = {
+    "temperature": 0.3,
+    "top_p": 0.3,
+    "num_ctx": CTX,
+}
+
 LANGUAGES = {
     "python": {
         "prompt_suffix": "Pisz kod w Pythonie.",
@@ -46,6 +53,19 @@ LANGUAGES = {
     },
 }
 
+def read_spec_file(file_path):
+    """Czyta treść pliku specyfikacji."""
+    if not file_path:
+        return None
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        print(f"❌ Błąd: Nie znaleziono pliku specyfikacji w ścieżce: {file_path}")
+    except Exception as e:
+        print(f"❌ Błąd podczas czytania pliku specyfikacji: {e}")
+    return None
+
 def generuj_kod(prompt, verbose, lang="python", timeout=120):
     """Generuje kod w wybranym języku z podglądem strumieniowym.
     
@@ -70,11 +90,7 @@ def generuj_kod(prompt, verbose, lang="python", timeout=120):
                 {"role": "user", "content": prompt}
             ],
             stream=True,
-            options={
-                "temperature": 0.3,
-                "top_p": 0.3,
-                "num_ctx": CTX,
-            }
+            options=MODEL_OPTIONS
         )
         
         # SEPAROWANE zmienne: thinking vs odpowiedź
@@ -146,8 +162,9 @@ def wyeksponuj_kod(output_text, lang):
             return output_text, lang_cfg['ext']
 
 
-def zapisuj_pliki(thinking, response, code_content, code_filename, lang="python"):
-    """Zapisuje pliki: thinking, response i kod osobno."""
+def zapisuj_pliki(thinking, response, code_content, code_filename, 
+                   lang="python", final_prompt="", options=None):
+    """Zapisuje pliki: thinking, response, kod oraz metadane (prompt, parametry)."""
     
     # Plik z procesem myślenia
     if thinking:
@@ -170,13 +187,25 @@ def zapisuj_pliki(thinking, response, code_content, code_filename, lang="python"
     # Plik z metadanymi procesu
     info_filename = code_filename + "_model"
     try:
-        formatted_time = datetime.now().strftime('%%Y-%%m-%%d %%H:%%M:%%S')
+        formatted_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        # Budowanie treści metadanych
+        options_str = ""
+        if options:
+            options_str = "\n".join([f"{k}: {v}" for k, v in options.items()])
+
         info_content = f"""=== Proces generacji kodu ===
 Czas generacji: {formatted_time}
 Model: {MODEL_NAME}
 Język: {lang}
 Thinking: {'Tak' if thinking else 'Nie'}
 Wynik: Zapisany w plikach.
+
+=== Parametry Modelu ===
+{options_str}
+
+=== Pełny Prompt (w tym specyfikacja) ===
+{final_prompt}
 """
         with open(info_filename, "w", encoding="utf-8") as f:
             f.write(info_content)
@@ -193,10 +222,19 @@ if __name__ == "__main__":
     parser.add_argument("output_file", nargs="?", help="Nazwa pliku wyjściowego (np. kod.py).")
     parser.add_argument("-v", "--verbose", action="store_true",  
                     help="włącz tryb informacyjny (więcej szczegółów podczas generowania)")
+    parser.add_argument("-s", "--spec", help="Ścieżka do pliku spec.md z wymaganiami.")
     
     args = parser.parse_args()
     
-    prompt = args.prompt
+    # Pobieranie specyfikacji, jeśli podano ścieżkę
+    spec_content = read_spec_file(args.spec)
+    
+    # Budowanie końcowego promptu
+    if spec_content:
+        final_prompt = f"SPECYFIKACJA WYMAGAŃ:\n{spec_content}\n\nZADANIE UŻYTKOWNIKA:\n{args.prompt}"
+    else:
+        final_prompt = args.prompt
+
     lang = args.lang
     output_file = args.output_file
     
@@ -211,13 +249,15 @@ if __name__ == "__main__":
     print(f"--- START PROCESU ---")
     
     # Zwracamy thinking, response, has_thinking
-    thinking, response, has_thinking = generuj_kod(prompt, args.verbose, lang)
+    thinking, response, has_thinking = generuj_kod(final_prompt, args.verbose, lang)
     
     if thinking is not None and response is not None:
         kod_wyciety, ext = wyeksponuj_kod(response, lang)
         
         if kod_wyciety:
-            zapisuj_pliki(thinking, response, kod_wyciety, output_file, lang=lang)
+            # Przekazujemy final_prompt i MODEL_OPTIONS do funkcji zapisu
+            zapisuj_pliki(thinking, response, kod_wyciety, output_file, 
+                          lang=lang, final_prompt=final_prompt, options=MODEL_OPTIONS)
         else:
             print("⚠️  Nie udało się wyciągnąć czystego kodu z odpowiedzi.")
             
