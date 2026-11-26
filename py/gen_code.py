@@ -45,6 +45,7 @@ JSON_SCHEMA = {
     },
     "required": ["files"]
 }
+
 LANGUAGES = {
     "python": {
         "prompt_suffix": "Pisz kod w Pythonie.",
@@ -75,6 +76,27 @@ LANGUAGES = {
         "prompt_suffix": "Pisz kod w Ruby.",
         "pattern": r'```(?:ruby|rb|r)\s*\n([\s\S]*?)\n```',
         "ext": ".rb"
+    },
+    # DODANE NOWE JĘZYKI:
+    "rust": {
+        "prompt_suffix": "Pisz kod w Rust.",
+        "pattern": r'```(?:rust|rs)\s*\n([\s\S]*?)\n```',
+        "ext": ".rs"
+    },
+    "html": {
+        "prompt_suffix": "Pisz kod HTML.",
+        "pattern": r'```(?:html|htm)\s*\n([\s\S]*?)\n```',
+        "ext": ".html"
+    },
+    "java": {
+        "prompt_suffix": "Pisz kod w Java.",
+        "pattern": r'```(?:java)\s*\n([\s\S]*?)\n```',
+        "ext": ".java"
+    },
+    "nodejs": {
+        "prompt_suffix": "Pisz kod w Node.js (JavaScript).",
+        "pattern": r'```(?:javascript|node|mjs|js)\s*\n([\s\S]*?)\n```',
+        "ext": ".js"
     },
 }
 
@@ -110,7 +132,7 @@ def generuj_kod(prompt, verbose, lang="python", timeout=120):
     if lang not in LANGUAGES:
         print(f"❌ Nieobsługiwany język: {lang}")
         print(f"Dostępne: {', '.join(LANGUAGES.keys())}")
-        return None
+        return None, None, False
     
     lang_cfg = LANGUAGES[lang]
     system_prompt = f"{SYSTEM_PROMPT_BASE.replace('{lang}', lang)}\n{lang_cfg['prompt_suffix']}"
