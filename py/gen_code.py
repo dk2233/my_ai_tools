@@ -121,7 +121,7 @@ def read_spec_file(file_path):
         print(f"❌ Błąd podczas czytania pliku specyfikacji: {e}")
     return None
 
-def generuj_kod(prompt, verbose, lang="python", timeout=120):
+def generuj_kod(prompt, verbose, lang="python", timeout=120, think=False):
     """Generuje kod w wybranym języku z podglądem strumieniowym.
     
     Oddzielnie zbiera thinking i odpowiedź.
@@ -145,6 +145,7 @@ def generuj_kod(prompt, verbose, lang="python", timeout=120):
                 {"role": "user", "content": prompt}
             ],
             stream=True,
+            think=think,
             format=ProjectOutput.model_json_schema(), # Wymuszenie struktury
             options=MODEL_OPTIONS
         )
@@ -421,6 +422,8 @@ if __name__ == "__main__":
     parser.add_argument("-v", "--verbose", action="store_true",  
                     help="włącz tryb informacyjny (więcej szczegółów podczas generowania)")
     parser.add_argument("-s", "--spec", help="Ścieżka do pliku spec.md z wymaganiami.")
+    parser.add_argument("-th", "--think", action="store_true",  
+                        help="wyłącz tryb myślenia modelu (nie generuj bloku thinking)")
     
     args = parser.parse_args()
     
@@ -450,7 +453,7 @@ if __name__ == "__main__":
     print(f"--- START PROCESU ---")
     
     # Generowanie kodu (zwraca thinking, result, has_thinking)
-    thinking, response_obj, has_thinking = generuj_kod(final_prompt, args.verbose, args.lang)
+    thinking, response_obj, has_thinking = generuj_kod(final_prompt, args.verbose, args.lang, think=args.think)
     
     if response_obj is not None:
         files_code, ext = wyeksponuj_kod(response_obj, args.lang)
